@@ -118,7 +118,14 @@ def score_article(row, keyword:str=""):
     score = 0.0
     # recency: newer is better
     if pd.notnull(row["publishedAt"]):
-        hours = (pd.Timestamp.utcnow() - row["publishedAt"].tz_convert(None)).total_seconds()/3600 if getattr(row["publishedAt"], "tzinfo", None) else (pd.Timestamp.utcnow() - row["publishedAt"]).total_seconds()/3600
+    pub_time = row["publishedAt"]
+    try:
+        # 兼容 tz-aware 和 tz-naive 两种时间戳
+        if hasattr(pub_time, "tz_convert"):
+            pub_time = pub_time.tz_localize(None) if pub_time.tzinfo else pub_time
+        hours = (pd.Timestamp.utcnow() - pub_time).total_seconds() / 3600
+    except Exception:
+        hours = 9999  # 如果解析失败，视为很旧
         if hours < 6: score += 5
         elif hours < 24: score += 4
         elif hours < 72: score += 3
