@@ -1,323 +1,295 @@
+# ============================================================
+#   News Recommendation + Emotion CrystalMix • wang xinru
+#   Full integrated version (for Streamlit Cloud or local)
+# ============================================================
+
 import streamlit as st
 import requests
 import pandas as pd
 import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
+import random
+import math
+from PIL import Image, ImageDraw, ImageFilter
 import nltk
 from nltk.sentiment import SentimentIntensityAnalyzer
+import plotly.express as px
 
-# ========== INITIAL SETUP ==========
+# ---------------------- Streamlit Setup ---------------------
 st.set_page_config(
-    page_title="News Recommendation + Emotion Crystal • wang xinru",
+    page_title="News + Emotion CrystalMix • wang xinru",
     page_icon="❄️",
     layout="wide"
 )
 
-st.title("📰 News Recommendation + ❄️ Emotion Crystal Visualization • wang xinru")
-st.caption("Enter your NewsAPI key on the left → click 'Start' to get recommendations.")
+st.title("📰 News + ❄ Emotion CrystalMix • wang xinru")
+st.caption("Using VADER + Emotion→Color + CrystalMix visual system.")
 
-# NLTK setup
-nltk.download("vader_lexicon")
+# ---------------------- NLTK Init ---------------------------
+nltk.download("vader_lexicon", quiet=True)
 sia = SentimentIntensityAnalyzer()
 
-# ---------- Emotion Color Maps ----------
-EMOTION_MAP = {
-    "positive": "calm_blue",
-    "negative": "danger_red",
-    "neutral": "fog_gray",
-    "joy": "warm_gold",
-    "anger": "neon_red",
-    "sadness": "cold_teal",
-    "fear": "purple_shadow",
-    "surprise": "mint_green"
+# ============================================================
+#          Emotion RGB Palette (20+ emotions)
+# ============================================================
+
+EMOTION_RGB = {
+    "joy": (255, 200, 60),
+    "love": (255, 95, 150),
+    "pride": (255, 160, 90),
+    "hope": (210, 220, 255),
+    "calm": (120, 170, 255),
+    "trust": (110, 180, 200),
+    "curiosity": (150, 200, 255),
+    "awe": (175, 150, 255),
+    "nostalgia": (255, 180, 140),
+    "surprise": (255, 240, 140),
+    "mixed": (160, 120, 200),
+    "anger": (245, 60, 60),
+    "fear": (160, 90, 255),
+    "sadness": (60, 150, 200),
+    "anxiety": (100, 130, 180),
+    "disgust": (120, 160, 90),
+    "boredom": (180, 180, 180),
+    "neutral": (160, 160, 160),
 }
 
-COLOR_TABLE = {
-    "calm_blue": "#78AEEB",
-    "danger_red": "#D85C5C",
-    "fog_gray": "#9AA0A6",
-    "warm_gold": "#E8C066",
-    "neon_red": "#FF4D4D",
-    "cold_teal": "#4FB3C8",
-    "purple_shadow": "#8C6FF7",
-    "mint_green": "#6EE7B7"
-}
+# ============================================================
+#                Expanded Emotion Classifier
+# ============================================================
 
-# ---------- CSS ----------
-st.markdown("""
-<style>
-[data-testid="stAppViewContainer"] { background: #0f1116; }
-[data-testid="stSidebar"] { background: #0b0d12; }
-h1,h2,h3,h4,h5,p,span,div,label { color: #e5e7eb !important; }
-.glass { background: rgba(255,255,255,0.06); border-radius:16px; padding:14px; margin:8px 0; }
-a { color: #8ab4ff !important; }
-</style>
-""", unsafe_allow_html=True)
+def classify_emotion_expanded(row):
+    neg = row["neg"]
+    neu = row["neu"]
+    pos = row["pos"]
+    compound = row["compound"]
 
-# ---------- Sidebar ----------
+    # Strong positive
+    if compound > 0.7 and pos > 0.6:
+        return "joy"
+    if compound > 0.6 and pos > 0.5:
+        return "love"
+    if compound > 0.5 and pos > 0.4:
+        return "pride"
+    if compound > 0.4 and pos > 0.4:
+        return "hope"
+
+    # Positive nuanced
+    if compound > 0.2 and neu > 0.4:
+        return random.choice(["calm", "trust", "curiosity", "awe", "nostalgia"])
+
+    if pos > 0.3 and neu > 0.4:
+        return "surprise"
+
+    # Mixed
+    if pos > 0.25 and neg > 0.25:
+        return "mixed"
+
+    # Negative
+    if compound < -0.7 and neg > 0.5:
+        return "anger"
+    if compound < -0.6:
+        return "fear"
+    if compound < -0.5:
+        return "sadness"
+    if compound < -0.3 and neg > 0.3:
+        return "anxiety"
+    if compound < -0.2:
+        return "disgust"
+
+    # Neutral / boredom
+    if abs(compound) < 0.05:
+        return "boredom" if neu > 0.8 else "neutral"
+
+    return "neutral"
+
+# ============================================================
+#                  Crystal Shape Generator
+# ============================================================
+
+def crystal_shape(cx, cy, r, wobble=0.25, sides_min=5, sides_max=10):
+    n = random.randint(sides_min, sides_max)
+    angles = np.linspace(0, 2*math.pi, n, endpoint=False)
+    random.shuffle(angles)
+
+    pts = []
+    for a in angles:
+        rr = r * (1 + wobble * (random.random() - 0.5))
+        x = cx + rr * math.cos(a)
+        y = cy + rr * math.sin(a)
+        pts.append((x, y))
+    pts.append(pts[0])
+    return pts
+
+# ============================================================
+#            Soft Polygon Drawing with Glow
+# ============================================================
+
+def draw_polygon_soft(base, points, color, alpha=150, blur_px=6, edge_width=1):
+    layer = Image.new("RGBA", base.size, (0,0,0,0))
+    draw = ImageDraw.Draw(layer)
+
+    draw.polygon(points, fill=(*color, alpha))
+    if edge_width > 0:
+        draw.line(points, fill=(255,255,255,200), width=edge_width)
+
+    layer = layer.filter(ImageFilter.GaussianBlur(radius=blur_px))
+    base.alpha_composite(layer)
+    return base
+
+# ============================================================
+#                    CrystalMix Renderer
+# ============================================================
+
+def render_crystalmix(df, width=1400, height=900, seed=123,
+                      shapes_per_emotion=5,
+                      min_size=40, max_size=140,
+                      wobble=0.25,
+                      blur_px=6,
+                      layers=4,
+                      bg_color=(15,17,22)):
+    
+    random.seed(seed)
+    np.random.seed(seed)
+
+    base = Image.new("RGBA", (width, height), bg_color + (255,))
+
+    emotions = df["emotion"].value_counts().index.tolist()
+    if len(emotions) == 0:
+        emotions = ["joy", "love", "curiosity"]
+
+    margin = 80
+
+    for _layer in range(layers):
+        for emo in emotions:
+            color = EMOTION_RGB.get(emo, (170,170,170))
+            for _ in range(shapes_per_emotion):
+
+                cx = random.randint(margin, width-margin)
+                cy = random.randint(margin, height-margin)
+                r = random.randint(min_size, max_size)
+
+                pts = crystal_shape(cx, cy, r, wobble=wobble)
+                base = draw_polygon_soft(base, pts, color,
+                                         alpha=150,
+                                         blur_px=blur_px,
+                                         edge_width=1)
+
+    return base.convert("RGB")
+
+# ============================================================
+#                      Sidebar Controls
+# ============================================================
+
 with st.sidebar:
-    st.header("🔑 API Credentials")
-    hidden = st.checkbox("Hide API Key", value=True)
-    api_key = st.text_input("NewsAPI Key",
-                            type="password" if hidden else "default",
-                            placeholder="YOUR_NEWSAPI_KEY")
+    st.header("🔧 Controls")
 
-    st.divider()
-    st.header("🔍 Query Settings")
-    query = st.text_input("Keyword (optional)", placeholder="e.g., ai, economy")
-    country = st.selectbox("Country", ["", "us", "gb", "kr", "jp", "cn", "de", "fr", "in"])
-    category = st.selectbox("Category", ["", "business", "entertainment", "general",
-                                         "health", "science", "sports", "technology"])
-    sort_by = st.selectbox("Sort by", ["publishedAt", "relevancy", "popularity"])
-    page_size = st.slider("Results to fetch", 10, 50, 25, step=5)
+    api_key = st.secrets["NEWS_API_KEY"]  # use secrets
+    query = st.text_input("Search keyword", "AI")
+    page_size = st.slider("Results", 10, 50, 20)
 
-    st.divider()
-    st.header("🎬 Film Color Shift")
-    color_shift = st.slider("Hue Rotation (visual FX)", -180, 180, 0)
+    # Crystal parameters
+    seed = st.slider("Crystal Seed", 1, 999, 123)
+    layers = st.slider("Layers", 1, 8, 4)
+    wobble = st.slider("Wobble (shape randomness)", 0.0, 1.0, 0.25)
+    blur_px = st.slider("Blur (soft glow)", 0, 15, 6)
 
-    run = st.button("▶️ Start", use_container_width=True)
+    run = st.button("▶ Run")
 
+# ============================================================
+#                     Fetch NewsAPI
+# ============================================================
 
-# =============================================================
-# ---------------------- CORE FUNCTIONS -----------------------
-# =============================================================
+def fetch_news(api_key, query, page_size):
+    url = "https://newsapi.org/v2/everything"
+    r = requests.get(url, params={
+        "q": query,
+        "apiKey": api_key,
+        "pageSize": page_size,
+        "language": "en",
+        "sortBy": "publishedAt"
+    })
 
-NEWSAPI_BASE = "https://newsapi.org/v2"
+    if r.status_code != 200:
+        st.error("API Error: " + r.json().get("message", ""))
+        return pd.DataFrame()
 
-@st.cache_data(ttl=300)
-def fetch_news(api_key, query, country, category, sort_by, page_size):
-    if not api_key:
-        return {"articles": [], "error": "Missing API key."}
+    data = r.json().get("articles", [])
+    df = pd.DataFrame(data)
+    if df.empty:
+        return df
 
-    headers = {"User-Agent": "streamlit-news-app"}
-    params_common = {"apiKey": api_key, "pageSize": page_size}
+    df["timestamp"] = pd.to_datetime(df["publishedAt"], errors="coerce")
+    df["text"] = df["title"].fillna("") + " " + df["description"].fillna("")
+    df["source"] = df["source"].apply(lambda s: s.get("name") if isinstance(s, dict) else s)
+    return df[["timestamp", "text", "source", "title", "description", "url"]]
 
-    try:
-        if query:
-            url = f"{NEWSAPI_BASE}/everything"
-            params = {**params_common, "q": query, "sortBy": sort_by, "language": "en"}
-        else:
-            url = f"{NEWSAPI_BASE}/top-headlines"
-            params = {**params_common}
-            if country:
-                params["country"] = country
-            if category:
-                params["category"] = category
+# ============================================================
+#                          Main
+# ============================================================
 
-        r = requests.get(url, params=params, headers=headers, timeout=20)
-        if r.status_code != 200:
-            msg = r.json().get("message", r.text)
-            return {"articles": [], "error": f"API error: {msg}"}
+if run:
 
-        data = r.json()
-        return {"articles": data.get("articles", []), "error": None}
+    df = fetch_news(api_key, query, page_size)
 
-    except Exception as e:
-        return {"articles": [], "error": str(e)}
+    if df.empty:
+        st.warning("No results.")
+        st.stop()
 
+    # ---------- VADER scores ----------
+    vader_res = df["text"].apply(sia.polarity_scores)
+    df["neg"] = vader_res.apply(lambda x: x["neg"])
+    df["neu"] = vader_res.apply(lambda x: x["neu"])
+    df["pos"] = vader_res.apply(lambda x: x["pos"])
+    df["compound"] = vader_res.apply(lambda x: x["compound"])
 
-def to_dataframe(articles):
-    if not articles:
-        return pd.DataFrame(columns=["source","author","title","description","url","publishedAt"])
-    rows = []
-    for a in articles:
-        rows.append({
-            "source": (a.get("source") or {}).get("name"),
-            "author": a.get("author"),
-            "title": a.get("title"),
-            "description": a.get("description"),
-            "url": a.get("url"),
-            "publishedAt": a.get("publishedAt")
-        })
-    df = pd.DataFrame(rows)
-    if "publishedAt" in df:
-        df["publishedAt"] = pd.to_datetime(df["publishedAt"], errors="coerce")
-    return df
+    # ---------- Expanded Emotion ----------
+    df["emotion"] = df.apply(classify_emotion_expanded, axis=1)
 
+    # ============================================================
+    #                 Glass Card Article Display
+    # ============================================================
 
-# -------------- Recommendation Score --------------
-def score_article(row, keyword: str = ""):
-    score = 0.0
+    st.subheader("🧊 News Cards with Emotion")
 
-    # Recency
-    if pd.notnull(row["publishedAt"]):
-        pub_time = row["publishedAt"]
-        try:
-            if hasattr(pub_time, "tzinfo") and pub_time.tzinfo is not None:
-                pub_time = pub_time.tz_convert(None)
-            hours = (pd.Timestamp.utcnow() - pub_time).total_seconds() / 3600
-        except:
-            hours = 9999
+    for _, row in df.iterrows():
+        st.markdown(f"""
+        <div class='glass'>
+            <h4>{row['title']}</h4>
+            <p>{row['description']}</p>
+            <p style='opacity:.7'>{row['source']} — {row['timestamp']}</p>
+            <b>Emotion:</b> {row['emotion']}<br>
+            <a href="{row['url']}" target="_blank">Read more →</a>
+        </div>
+        """, unsafe_allow_html=True)
 
-        if hours < 6: score += 5
-        elif hours < 24: score += 4
-        elif hours < 72: score += 3
-        elif hours < 168: score += 2
-        else: score += 1
+    # ============================================================
+    #                     Source Distribution
+    # ============================================================
 
-    # Title length
-    title = row.get("title") or ""
-    if 40 <= len(title) <= 100:
-        score += 1.5
+    st.subheader("📊 Source Distribution")
 
-    # Keyword match
-    text = (str(row.get("title") or "") + " " + str(row.get("description") or "")).lower()
-    for kw in [k.strip() for k in (keyword or "").split(",") if k.strip()]:
-        if kw.lower() in text:
-            score += 2.0
+    src = df["source"].value_counts().reset_index()
+    src.columns = ["Source", "Count"]
+    fig = px.bar(src, x="Source", y="Count", title="Articles by Source")
+    fig.update_layout(paper_bgcolor="#0f1116", plot_bgcolor="#0f1116", font_color="#fff")
+    st.plotly_chart(fig, use_container_width=True)
 
-    return score
+    # ============================================================
+    #                   Emotion CrystalMix Render
+    # ============================================================
 
+    st.subheader("❄ Emotion CrystalMix — Full Ice Crystal Rendering")
 
-def add_scores(df, keyword):
-    if df.empty: return df
-    df = df.copy()
-    df["score"] = df.apply(lambda r: score_article(r, keyword), axis=1)
-
-    if df["score"].max() > 0:
-        df["score_norm"] = ((df["score"] - df["score"].min()) /
-                            (df["score"].max() - df["score"].min()) * 100).round(1)
-    else:
-        df["score_norm"] = 0
-
-    return df
-
-
-# -------------- Emotion Detection --------------
-def detect_emotion(text):
-    """Return primary + secondary emotions."""
-    if not text:
-        return ["neutral"]
-
-    scores = sia.polarity_scores(text)
-    compound = scores["compound"]
-
-    # Primary sentiment
-    if compound >= 0.4:
-        primary = "joy"
-    elif compound >= 0.05:
-        primary = "positive"
-    elif compound <= -0.4:
-        primary = "anger"
-    elif compound <= -0.1:
-        primary = "sadness"
-    else:
-        primary = "neutral"
-
-    # Secondary emotions
-    secondary = []
-    if scores["neg"] > 0.3: secondary.append("negative")
-    if scores["neu"] > 0.6: secondary.append("neutral")
-    if scores["pos"] > 0.4: secondary.append("joy")
-    if not secondary:
-        secondary = ["neutral"]
-
-    return list(set([primary] + secondary))
-
-
-def add_emotion(df):
-    df = df.copy()
-    df["emotion"] = df.apply(lambda r:
-        detect_emotion((str(r["title"]) + " " + str(r["description"])).strip()),
-        axis=1
+    crystal = render_crystalmix(
+        df,
+        width=1400,
+        height=900,
+        seed=seed,
+        shapes_per_emotion=5,
+        layers=layers,
+        blur_px=blur_px,
+        wobble=wobble
     )
-    df["emotion_primary"] = df["emotion"].apply(lambda x: x[0])
-    df["color"] = df["emotion_primary"].apply(
-        lambda emo: COLOR_TABLE.get(EMOTION_MAP.get(emo, "fog_gray"))
-    )
-    return df
 
-
-# -------------- Ice Crystal Scatter --------------
-def generate_ice_crystal(df, hue_shift=0):
-    """Voronoi-style ice crystal scatter."""
-    df = df.copy()
-    n = len(df)
-    np.random.seed(42)
-
-    # Random crystal coordinates
-    df["x"] = np.random.randn(n).cumsum()
-    df["y"] = np.random.randn(n).cumsum()
-    df["size"] = df["score_norm"].fillna(10)
-
-    fig = go.Figure()
-
-    fig.add_trace(go.Scatter(
-        x=df["x"],
-        y=df["y"],
-        mode="markers",
-        marker=dict(
-            size=df["size"],
-            color=df["color"],
-            opacity=0.92,
-            line=dict(color="#FFFFFF", width=1)
-        ),
-        text=df["title"],
-        hovertemplate="<b>%{text}</b><extra></extra>"
-    ))
-
-    fig.update_layout(
-        title="❄️ Emotion Ice Crystal Map (Film Graded)",
-        paper_bgcolor="#0f1116",
-        plot_bgcolor="#0f1116",
-        xaxis=dict(visible=False),
-        yaxis=dict(visible=False),
-        showlegend=False
-    )
-    return fig
-
-
-# =============================================================
-# ---------------------- MAIN LOGIC ---------------------------
-# =============================================================
-if not api_key:
-    st.info("👉 Please enter your **NewsAPI Key** in the left sidebar, then click **Start**.")
-
-elif run:
-    with st.spinner("Fetching news..."):
-        result = fetch_news(api_key, query, country, category, sort_by, page_size)
-
-    if result["error"]:
-        st.error(result["error"])
-
-    else:
-        df = to_dataframe(result["articles"])
-
-        if df.empty:
-            st.warning("No articles found. Try another keyword/country/category.")
-
-        else:
-            df = add_scores(df, query or "")
-            df = add_emotion(df)
-
-            # ---------- Top Recommendations ----------
-            st.subheader("🏆 Top Recommendations")
-            for _, row in df.sort_values("score_norm", ascending=False).head(10).iterrows():
-                st.markdown(f"""
-                <div class='glass'>
-                    <h4>{row['title'] or 'Untitled'}</h4>
-                    <p>{row['description'] or ''}</p>
-                    <p style='opacity:.7'>{row['source'] or 'Unknown'} • 
-                    {row['publishedAt'].strftime('%Y-%m-%d %H:%M') if pd.notnull(row['publishedAt']) else ''}</p>
-                    <b>Score:</b> {row['score_norm']} / 100<br>
-                    <b>Emotion:</b> {row['emotion']}<br>
-                    <a href="{row['url']}" target="_blank">Read more →</a>
-                </div>
-                """, unsafe_allow_html=True)
-
-            # ---------- Insights ----------
-            st.subheader("📊 Source Distribution")
-            src_counts = df["source"].value_counts().reset_index()
-            src_counts.columns = ["Source", "Count"]
-            fig1 = px.bar(src_counts, x="Source", y="Count", title="Articles by Source")
-            fig1.update_layout(paper_bgcolor="#0f1116", plot_bgcolor="#0f1116", font_color="#e5e7eb")
-            st.plotly_chart(fig1, use_container_width=True)
-
-            # ---------- Emotion Crystal ----------
-            st.subheader("❄️ Emotion Ice Crystal Map")
-            fig2 = generate_ice_crystal(df, hue_shift=color_shift)
-            st.plotly_chart(fig2, use_container_width=True)
-
-else:
-    st.info("Set your query in the sidebar and click **Start** to see results.")
+    st.image(crystal, use_container_width=True)
+    st.success("CrystalMix rendered successfully!")
